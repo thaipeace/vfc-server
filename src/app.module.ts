@@ -4,6 +4,7 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { HealthModule } from './modules/health/health.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -20,9 +21,10 @@ import { HealthModule } from './modules/health/health.module';
       },
     }),
 
-    // Core Database & Health Modules
+    // Core Database, Health & Auth Modules
     PrismaModule,
     HealthModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
