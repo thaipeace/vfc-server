@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  FARMER
+  SALE
+  ADMIN
+  AGENCY
+  SUPER_AGENT
+  MDO
+  SE
+  BGD
+  MDM
+  CV_CM
+  ASM
+  TSM
+}
+
+enum OtpChallengeStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  phone        String    @unique
+  zaloId       String?   @unique
+  name         String?
+  avatarUrl    String?
+  role         Role      @default(FARMER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  sessionToken String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  otpRequests        OtpRequest[]
+  browserCredentials BrowserCredential[]
+  agency             Agency?
+  farmer             Farmer?
+  mdo                Mdo?
+  se                 Se?
+
+  @@index([phone])
+  @@index([zaloId])
+  @@index([role])
+  @@map("users")
+}
+
+model OtpRequest {
+  id             String             @id @default(cuid())
+  userId         String?
+  phone          String
+  otp            String
+  status         OtpChallengeStatus @default(PENDING)
+  deliveryMethod String?            @map("delivery_method")
+  expiresAt      DateTime
+  verified       Boolean            @default(false)
+  verifiedAt     DateTime?          @map("verified_at")
+  attempts       Int                @default(0)
+  createdAt      DateTime           @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([phone])
+  @@index([expiresAt])
+  @@map("otp_requests")
+}
+
+model BrowserCredential {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  phone          String
+  credentialHash String   @map("credential_hash")
+  userAgent      String?  @map("user_agent")
+  expiresAt      DateTime @map("expires_at")
+  lastUsedAt     DateTime @default(now()) @map("last_used_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([phone])
+  @@index([credentialHash])
+  @@map("browser_credentials")
+}
+
+model ZaloAuthToken {
+  id                      String    @id @default("default")
+  accessToken             String    @map("access_token")
+  refreshToken            String    @map("refresh_token")
+  expiresAt               DateTime  @map("expires_at")
+  refreshTokenExpiresAt   DateTime? @map("refresh_token_expires_at")
+  enabled                 Boolean   @default(true) @map("enabled")
+  refreshThresholdSeconds Int       @default(14400) @map("refresh_threshold_seconds")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  @@map("zalo_auth_tokens")
+}
+
+model Agency {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  phone        String?
+  userId       String?  @unique @map("user_id")
+  taxCode      String?  @map("tax_code")
+  salesman     String?
+  area         String?
+  address      String?
+  latitude     Float
+  longitude    Float
+  wardProvince String?  @map("ward_province")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([latitude, longitude])
+  @@index([phone])
+  @@map("agencies")
+}
+
+model Farmer {
+  id         String   @id @default(cuid())
+  name       String
+  phone      String   @unique
+  ward       String?
+  province   String?
+  crop       String?
+  area       Float?
+  agencyCode String?  @map("agency_code")
+  mdo        String?
+  se         String?
+  userId     String?  @unique @map("user_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([phone])
+  @@map("farmers")
+}
+
+model Mdo {
+  id           String   @id @default(cuid())
+  name         String
+  employeeCode String   @unique @map("employee_code")
+  region       String?
+  check        String?
+  phone        String   @unique
+  userId       String?  @unique @map("user_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([phone])
+  @@map("mdo")
+}
+
+model Se {
+  id           String   @id @default(cuid())
+  name         String
+  employeeCode String   @unique @map("employee_code")
+  region       String?
+  area         String?
+  location     String?
+  phone        String   @unique
+  email        String?
+  userId       String?  @unique @map("user_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([phone])
+  @@map("se")
+}
