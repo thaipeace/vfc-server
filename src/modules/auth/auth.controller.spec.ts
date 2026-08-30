@@ -6,6 +6,7 @@ import { UserResolverService } from './services/user-resolver.service';
 import { ChallengeService } from './services/challenge.service';
 import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
+import { BrowserCredentialService } from './services/browser-credential.service';
 import { Role } from '@prisma/client';
 import { HttpException, HttpStatus } from '@nestjs/common';
 
@@ -16,6 +17,7 @@ describe('AuthController', () => {
   let jwtServiceMock: any;
   let zaloOtpMock: any;
   let telegramOtpMock: any;
+  let browserCredentialMock: any;
   let prismaMock: any;
 
   beforeEach(async () => {
@@ -58,6 +60,15 @@ describe('AuthController', () => {
       sendOtp: jest.fn().mockResolvedValue(true),
     };
 
+    browserCredentialMock = {
+      validate: jest.fn().mockResolvedValue({ valid: true, userId: 'u1' }),
+      create: jest.fn().mockResolvedValue({
+        id: 'bc_123',
+        token: 'raw_token_xyz',
+        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      }),
+    };
+
     prismaMock = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
@@ -80,6 +91,7 @@ describe('AuthController', () => {
         { provide: ChallengeService, useValue: challengeServiceMock },
         { provide: ZaloOtpService, useValue: zaloOtpMock },
         { provide: TelegramOtpService, useValue: telegramOtpMock },
+        { provide: BrowserCredentialService, useValue: browserCredentialMock },
       ],
     }).compile();
 
@@ -91,12 +103,24 @@ describe('AuthController', () => {
   });
 
   describe('requestOtp', () => {
-    it('should create challenge and return method zalo+telegram for valid phone', async () => {
-      const res = await controller.requestOtp({ phone: '0988366412' });
+    it('should create challenge and validate browser credential if provided', async () => {
+      const res = await controller.requestOtp({
+        phone: '0988366412',
+        credentialId: 'bc_123',
+        credentialToken: 'raw_token_xyz',
+      });
       expect(res.success).toBe(true);
       expect(res.challengeId).toBe('c123');
       expect(res.method).toBe('zalo+telegram');
-      expect(challengeServiceMock.createChallenge).toHaveBeenCalledWith('0988366412');
+      expect(res.hasValidCredential).toBe(true);
+      expect(browserCredentialMock.validate).toHaveBeenCalledWith(
+        'bc_123',
+        'raw_token_xyz',
+        '0988366412',
+      );
+      expect(challengeServiceMock.createChallenge).toHaveBeenCalledWith(
+        '0988366412',
+      );
     });
 
     it('should throw BAD_REQUEST if phone is invalid', async () => {
@@ -114,15 +138,25 @@ describe('AuthController', () => {
   });
 
   describe('verifyOtp', () => {
-    it('should verify challenge and return JWT token and user info', async () => {
-      const res = await controller.verifyOtp({
-        challengeId: 'c123',
-        otp: '1111',
-      });
+    it('should verify challenge and return JWT token, user info and browserCredential', async () => {
+      const res = await controller.verifyOtp(
+        {
+          challengeId: 'c123',
+          otp: '1111',
+        },
+        'Mozilla/5.0',
+      );
 
       expect(res.success).toBe(true);
       expect(res.token).toBe('mock_jwt_token_123');
       expect(res.user.id).toBe('u1');
+      expect(res.browserCredential).toBeDefined();
+      expect(res.browserCredential?.id).toBe('bc_123');
+      expect(browserCredentialMock.create).toHaveBeenCalledWith(
+        'u1',
+        '0988366412',
+        'Mozilla/5.0',
+      );
       expect(jwtServiceMock.signToken).toHaveBeenCalled();
     });
 
@@ -148,7 +182,9 @@ describe('AuthController', () => {
 
     it('should throw UNAUTHORIZED if header is missing or malformed', async () => {
       await expect(controller.getMe(undefined)).rejects.toThrow(HttpException);
-      await expect(controller.getMe('Basic 123')).rejects.toThrow(HttpException);
+      await expect(controller.getMe('Basic 123')).rejects.toThrow(
+        HttpException,
+      );
     });
   });
 });

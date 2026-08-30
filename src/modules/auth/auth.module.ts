@@ -7,6 +7,7 @@ import { ZaloTokenService } from './services/zalo-token.service';
 import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
 import { ChallengeService } from './services/challenge.service';
+import { BrowserCredentialService } from './services/browser-credential.service';
 
 @Module({
   controllers: [AuthController],
@@ -18,6 +19,7 @@ import { ChallengeService } from './services/challenge.service';
     ZaloOtpService,
     TelegramOtpService,
     ChallengeService,
+    BrowserCredentialService,
   ],
   exports: [
     JwtService,
@@ -27,6 +29,7 @@ import { ChallengeService } from './services/challenge.service';
     ZaloOtpService,
     TelegramOtpService,
     ChallengeService,
+    BrowserCredentialService,
   ],
 })
 export class AuthModule {}

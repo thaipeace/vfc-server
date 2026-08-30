@@ -22,6 +22,7 @@ import { UserResolverService } from './services/user-resolver.service';
 import { ChallengeService } from './services/challenge.service';
 import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
+import { BrowserCredentialService } from './services/browser-credential.service';
 import { AuthRequestDto } from './dto/auth-request.dto';
 import { AuthVerifyDto } from './dto/auth-verify.dto';
 import {
@@ -41,6 +42,7 @@ export class AuthController {
     private readonly challengeService: ChallengeService,
     private readonly zaloOtpService: ZaloOtpService,
     private readonly telegramOtpService: TelegramOtpService,
+    private readonly browserCredentialService: BrowserCredentialService,
   ) {}
 
   /**
@@ -98,11 +100,29 @@ export class AuthController {
       );
     }
 
-    // 4. Tạo Challenge OTP mới
+    // 4. Kiểm tra xem browser có mang theo Browser Credential hợp lệ không
+    let hasValidCredential = false;
+    if (dto.credentialId && dto.credentialToken) {
+      const credCheck = await this.browserCredentialService.validate(
+        dto.credentialId,
+        dto.credentialToken,
+        phone,
+      );
+      hasValidCredential = credCheck.valid;
+      this.logger.log(
+        `Browser Credential check for ${phone}: ${
+          hasValidCredential
+            ? 'VALID (Returning User)'
+            : 'INVALID/EXPIRED (First Login / Fallback)'
+        }`,
+      );
+    }
+
+    // 5. Tạo Challenge OTP mới
     const { challengeId, otp } =
       await this.challengeService.createChallenge(phone);
 
-    // 5. Gửi OTP qua Zalo & Telegram song song (chưa có SSE orchestrator ở Phase 2C)
+    // 6. Gửi OTP qua Zalo & Telegram song song (chưa có SSE orchestrator ở Phase 2C/2D)
     Promise.allSettled([
       this.zaloOtpService.sendOtp(phone, otp),
       this.telegramOtpService.sendOtp(phone, otp),
@@ -114,22 +134,26 @@ export class AuthController {
       success: true,
       challengeId,
       method: 'zalo+telegram',
+      hasValidCredential,
       fallbackAfter: 30,
     };
   }
 
   /**
    * [UAT-ACCEPTED-GAP #3]
-   * Xác thực mã OTP và phát hành Bearer JWT Token.
+   * Xác thực mã OTP, phát hành Bearer JWT Token và Browser Credential (365 ngày).
    */
   @Post('verify')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Xác thực mã OTP và đăng nhập nhận JWT Token' })
-  @ApiResponse({ status: 200, description: 'Xác thực thành công, trả về JWT' })
+  @ApiOperation({ summary: 'Xác thực mã OTP và đăng nhập nhận JWT Token & Browser Credential' })
+  @ApiResponse({ status: 200, description: 'Xác thực thành công, trả về JWT & Browser Credential' })
   @ApiResponse({ status: 400, description: 'Dữ liệu đầu vào không hợp lệ' })
   @ApiResponse({ status: 401, description: 'Mã OTP không đúng hoặc hết hạn' })
   @ApiResponse({ status: 403, description: 'Người dùng không được phép đăng nhập' })
-  async verifyOtp(@Body() dto: AuthVerifyDto) {
+  async verifyOtp(
+    @Body() dto: AuthVerifyDto,
+    @Headers('user-agent') userAgent?: string,
+  ) {
     const { challengeId, otp } = dto;
 
     if (!challengeId || !otp || otp.length !== 4) {
@@ -184,6 +208,13 @@ export class AuthController {
       sessionId: sessionToken,
     });
 
+    // 4. Tạo Browser Credential mới cho thiết bị này (TTL 365 ngày)
+    const browserCredential = await this.browserCredentialService.create(
+      user.id,
+      user.phone,
+      userAgent,
+    );
+
     return {
       success: true,
       token,
@@ -192,6 +223,11 @@ export class AuthController {
         phone: user.phone,
         role: user.role,
         name: user.name,
+      },
+      browserCredential: {
+        id: browserCredential.id,
+        token: browserCredential.token,
+        expiresAt: browserCredential.expiresAt,
       },
     };
   }
