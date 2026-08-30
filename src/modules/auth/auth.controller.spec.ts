@@ -7,6 +7,8 @@ import { ChallengeService } from './services/challenge.service';
 import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
 import { BrowserCredentialService } from './services/browser-credential.service';
+import { SseConnectionService } from './services/sse-connection.service';
+import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestrator.service';
 import { Role } from '@prisma/client';
 import { HttpException, HttpStatus } from '@nestjs/common';
 
@@ -18,6 +20,8 @@ describe('AuthController', () => {
   let zaloOtpMock: any;
   let telegramOtpMock: any;
   let browserCredentialMock: any;
+  let sseConnectionMock: any;
+  let orchestratorMock: any;
   let prismaMock: any;
 
   beforeEach(async () => {
@@ -69,6 +73,20 @@ describe('AuthController', () => {
       }),
     };
 
+    sseConnectionMock = {
+      addConnection: jest.fn(),
+      removeConnection: jest.fn(),
+      isConnectionActive: jest.fn().mockReturnValue(true),
+      sendEvent: jest.fn().mockReturnValue(true),
+    };
+
+    orchestratorMock = {
+      dispatch: jest.fn().mockResolvedValue({
+        method: 'sse',
+        message: 'Mã xác thực gửi qua SSE.',
+      }),
+    };
+
     prismaMock = {
       user: {
         findUnique: jest.fn().mockResolvedValue({
@@ -92,6 +110,8 @@ describe('AuthController', () => {
         { provide: ZaloOtpService, useValue: zaloOtpMock },
         { provide: TelegramOtpService, useValue: telegramOtpMock },
         { provide: BrowserCredentialService, useValue: browserCredentialMock },
+        { provide: SseConnectionService, useValue: sseConnectionMock },
+        { provide: OtpDeliveryOrchestratorService, useValue: orchestratorMock },
       ],
     }).compile();
 
@@ -102,16 +122,43 @@ describe('AuthController', () => {
     expect(controller).toBeDefined();
   });
 
+  describe('events (SSE)', () => {
+    it('should register connection with SseConnectionService and handle close', () => {
+      const mockRes: any = {};
+      let closeHandler: any;
+      const mockReq: any = {
+        on: jest.fn((event, handler) => {
+          if (event === 'close') closeHandler = handler;
+        }),
+      };
+
+      controller.events(mockRes, mockReq, '0988366412');
+      expect(sseConnectionMock.addConnection).toHaveBeenCalledWith(
+        expect.any(String),
+        mockRes,
+        '0988366412',
+      );
+      expect(mockReq.on).toHaveBeenCalledWith('close', expect.any(Function));
+
+      // Trigger close
+      closeHandler();
+      expect(sseConnectionMock.removeConnection).toHaveBeenCalledWith(
+        expect.any(String),
+      );
+    });
+  });
+
   describe('requestOtp', () => {
-    it('should create challenge and validate browser credential if provided', async () => {
+    it('should create challenge, check credential, and dispatch via orchestrator', async () => {
       const res = await controller.requestOtp({
         phone: '0988366412',
         credentialId: 'bc_123',
         credentialToken: 'raw_token_xyz',
+        connectionId: 'conn_123',
       });
       expect(res.success).toBe(true);
       expect(res.challengeId).toBe('c123');
-      expect(res.method).toBe('zalo+telegram');
+      expect(res.method).toBe('sse');
       expect(res.hasValidCredential).toBe(true);
       expect(browserCredentialMock.validate).toHaveBeenCalledWith(
         'bc_123',
@@ -121,6 +168,13 @@ describe('AuthController', () => {
       expect(challengeServiceMock.createChallenge).toHaveBeenCalledWith(
         '0988366412',
       );
+      expect(orchestratorMock.dispatch).toHaveBeenCalledWith({
+        phone: '0988366412',
+        otp: '1111',
+        challengeId: 'c123',
+        connectionId: 'conn_123',
+        hasValidCredential: true,
+      });
     });
 
     it('should throw BAD_REQUEST if phone is invalid', async () => {

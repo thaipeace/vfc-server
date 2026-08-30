@@ -8,6 +8,8 @@ import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
 import { ChallengeService } from './services/challenge.service';
 import { BrowserCredentialService } from './services/browser-credential.service';
+import { SseConnectionService } from './services/sse-connection.service';
+import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestrator.service';
 
 @Module({
   controllers: [AuthController],
@@ -20,6 +22,8 @@ import { BrowserCredentialService } from './services/browser-credential.service'
     TelegramOtpService,
     ChallengeService,
     BrowserCredentialService,
+    SseConnectionService,
+    OtpDeliveryOrchestratorService,
   ],
   exports: [
     JwtService,
@@ -30,6 +34,8 @@ import { BrowserCredentialService } from './services/browser-credential.service'
     TelegramOtpService,
     ChallengeService,
     BrowserCredentialService,
+    SseConnectionService,
+    OtpDeliveryOrchestratorService,
   ],
 })
 export class AuthModule {}

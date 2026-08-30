@@ -4,6 +4,9 @@ import {
   Get,
   Body,
   Headers,
+  Res,
+  Req,
+  Query,
   HttpCode,
   HttpStatus,
   HttpException,
@@ -15,6 +18,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Response, Request } from 'express';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from './services/jwt.service';
@@ -23,6 +27,8 @@ import { ChallengeService } from './services/challenge.service';
 import { ZaloOtpService } from './services/zalo-otp.service';
 import { TelegramOtpService } from './services/telegram-otp.service';
 import { BrowserCredentialService } from './services/browser-credential.service';
+import { SseConnectionService } from './services/sse-connection.service';
+import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestrator.service';
 import { AuthRequestDto } from './dto/auth-request.dto';
 import { AuthVerifyDto } from './dto/auth-verify.dto';
 import {
@@ -43,12 +49,34 @@ export class AuthController {
     private readonly zaloOtpService: ZaloOtpService,
     private readonly telegramOtpService: TelegramOtpService,
     private readonly browserCredentialService: BrowserCredentialService,
+    private readonly sseConnectionService: SseConnectionService,
+    private readonly otpDeliveryOrchestratorService: OtpDeliveryOrchestratorService,
   ) {}
 
   /**
+   * SSE Stream endpoint: Browser kết nối để nhận các sự kiện thời gian thực và mã OTP Toast
+   */
+  @Get('events')
+  @ApiOperation({
+    summary: 'SSE Endpoint để nhận các sự kiện và OTP real-time qua Server-Sent Events',
+  })
+  events(
+    @Res() res: Response,
+    @Req() req: Request,
+    @Query('phone') phone?: string,
+  ) {
+    const connectionId = crypto.randomUUID();
+    this.sseConnectionService.addConnection(connectionId, res, phone);
+
+    req.on('close', () => {
+      this.sseConnectionService.removeConnection(connectionId);
+    });
+  }
+
+  /**
    * [UAT-ACCEPTED-GAP #1]
-   * Gửi OTP ban đầu qua Zalo & Telegram song song.
-   * Giai đoạn Phase 2E sẽ bổ sung điều phối SSE + Fallback timer 30s.
+   * Yêu cầu gửi OTP: Điều phối thông minh giữa SSE trực tiếp (Returning User)
+   * hoặc Zalo ZNS / Telegram Bot kèm 30s SSE Fallback (First Login / Unbound).
    */
   @Post('request')
   @HttpCode(HttpStatus.OK)
@@ -122,20 +150,23 @@ export class AuthController {
     const { challengeId, otp } =
       await this.challengeService.createChallenge(phone);
 
-    // 6. Gửi OTP qua Zalo & Telegram song song (chưa có SSE orchestrator ở Phase 2C/2D)
-    Promise.allSettled([
-      this.zaloOtpService.sendOtp(phone, otp),
-      this.telegramOtpService.sendOtp(phone, otp),
-    ]).catch((err) => {
-      this.logger.error('Failed to dispatch background OTP delivery', err);
-    });
+    // 6. Điều phối gửi OTP qua Orchestrator
+    const dispatchResult =
+      await this.otpDeliveryOrchestratorService.dispatch({
+        phone,
+        otp,
+        challengeId,
+        connectionId: dto.connectionId,
+        hasValidCredential,
+      });
 
     return {
       success: true,
       challengeId,
-      method: 'zalo+telegram',
+      method: dispatchResult.method,
       hasValidCredential,
-      fallbackAfter: 30,
+      fallbackAfter: dispatchResult.fallbackAfter,
+      message: dispatchResult.message,
     };
   }
 
