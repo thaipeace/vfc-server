@@ -50,12 +50,11 @@ export class OtpDeliveryOrchestratorService {
   }
 
   /**
-   * Điều phối phân phối OTP thông minh:
-   * 1. Returning user (có Browser Credential hợp lệ + kết nối SSE đang mở):
-   *    -> Gửi OTP trực tiếp qua SSE Toast ngay lập tức (KHÔNG gọi Zalo/Telegram).
-   * 2. First login (hoặc không có credential / mất credential):
-   *    -> Gửi OTP qua Zalo ZNS + Telegram Bot song song.
-   *    -> Kích hoạt hẹn giờ Fallback 30s: Nếu sau 30s user chưa xác thực, tự động bắn OTP qua SSE Toast.
+   * Điều phối phân phối OTP đồng nhất & bảo mật:
+   * - Cả lần đầu và lần sau đều có chung trải nghiệm đồng nhất: OTP gửi qua Zalo/Telegram trước,
+   *   nếu chưa nhận được thì sau thời gian hẹn giờ (fallback timer), mã in-app sẽ xuất hiện thay thế.
+   * - Cơ chế Browser Credential được quản trị an toàn bên dưới để định danh thiết bị tin cậy
+   *   mà không làm lộ hoặc làm người dùng cảm thấy có sự bất thường về flow.
    */
   async dispatch(options: DispatchOptions): Promise<DispatchResult> {
     const { phone, otp, challengeId, connectionId, hasValidCredential } =
@@ -66,41 +65,8 @@ export class OtpDeliveryOrchestratorService {
       this.sseService.bindPhone(connectionId, phone);
     }
 
-    const isSseReady =
-      connectionId && this.sseService.isConnectionActive(connectionId);
-
-    // ── CASE 1: RETURNING USER (Có Browser Credential hợp lệ + SSE mở) ──
-    if (hasValidCredential && isSseReady) {
-      this.logger.log(
-        `[Orchestrator] Returning user ${phone} with active SSE connection ${connectionId}. Delivering OTP via SSE Toast immediately.`,
-      );
-
-      // Gửi OTP trực tiếp qua SSE
-      this.sseService.sendEvent(connectionId, 'otp', {
-        type: 'otp',
-        otp,
-        phone,
-        challengeId,
-        timestamp: Date.now(),
-      });
-
-      // Cập nhật phương thức gửi trong DB
-      await this.prisma.otpRequest
-        .update({
-          where: { id: challengeId },
-          data: { deliveryMethod: 'sse' },
-        })
-        .catch(() => null);
-
-      return {
-        method: 'sse',
-        message: 'Mã xác thực OTP đã được gửi trực tiếp tới màn hình của bạn.',
-      };
-    }
-
-    // ── CASE 2: FIRST LOGIN / FALLBACK FLOW (Zalo + Telegram + 30s SSE Fallback) ──
     this.logger.log(
-      `[Orchestrator] First login / unverified browser for ${phone}. Delivering OTP via Zalo & Telegram with 30s SSE fallback.`,
+      `[Orchestrator] Dispatching OTP for ${phone} (trustedDevice: ${!!hasValidCredential}). Delivering via Zalo & Telegram with unified SSE fallback.`,
     );
 
     // 1. Cập nhật phương thức trong DB

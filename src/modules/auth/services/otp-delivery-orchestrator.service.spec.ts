@@ -63,8 +63,8 @@ describe('OtpDeliveryOrchestratorService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('dispatch - Case 1: Returning user with valid credential & active SSE', () => {
-    it('should deliver OTP via SSE Toast immediately without calling Zalo/Telegram', async () => {
+  describe('dispatch - Unified secure flow', () => {
+    it('should dispatch Zalo & Telegram and schedule timed SSE fallback', async () => {
       sseServiceMock.isConnectionActive.mockReturnValue(true);
 
       const res = await service.dispatch({
@@ -75,35 +75,7 @@ describe('OtpDeliveryOrchestratorService', () => {
         hasValidCredential: true,
       });
 
-      expect(res.method).toBe('sse');
-      expect(sseServiceMock.sendEvent).toHaveBeenCalledWith(
-        'conn_abc',
-        'otp',
-        expect.objectContaining({ otp: '1234', type: 'otp' }),
-      );
-      expect(zaloOtpMock.sendOtp).not.toHaveBeenCalled();
-      expect(telegramOtpMock.sendOtp).not.toHaveBeenCalled();
-      expect(prismaMock.otpRequest.update).toHaveBeenCalledWith({
-        where: { id: 'c123' },
-        data: { deliveryMethod: 'sse' },
-      });
-    });
-  });
-
-  describe('dispatch - Case 2: First login (no valid credential)', () => {
-    it('should dispatch Zalo & Telegram and schedule 30s SSE fallback', async () => {
-      sseServiceMock.isConnectionActive.mockReturnValue(true);
-
-      const res = await service.dispatch({
-        phone: '0988366412',
-        otp: '1234',
-        challengeId: 'c123',
-        connectionId: 'conn_abc',
-        hasValidCredential: false,
-      });
-
       expect(res.method).toBe('zalo+telegram');
-      expect(res.fallbackAfter).toBe(30);
       expect(zaloOtpMock.sendOtp).toHaveBeenCalledWith('0988366412', '1234');
       expect(telegramOtpMock.sendOtp).toHaveBeenCalledWith(
         '0988366412',
@@ -111,14 +83,14 @@ describe('OtpDeliveryOrchestratorService', () => {
       );
       expect(sseServiceMock.sendEvent).not.toHaveBeenCalled();
 
-      // Trigger the 30s timer
+      // Trigger timer
       prismaMock.otpRequest.findUnique.mockResolvedValue({
         id: 'c123',
         status: OtpChallengeStatus.PENDING,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       });
 
-      jest.advanceTimersByTime(FALLBACK_TIMEOUT_MS);
+      jest.advanceTimersByTime(service.getFallbackTimeoutMs());
       await Promise.resolve(); // Flush microtasks
 
       expect(prismaMock.otpRequest.findUnique).toHaveBeenCalledWith({
@@ -146,14 +118,14 @@ describe('OtpDeliveryOrchestratorService', () => {
         hasValidCredential: false,
       });
 
-      // User verified already before 30s
+      // User verified already before fallback
       prismaMock.otpRequest.findUnique.mockResolvedValue({
         id: 'c123',
         status: OtpChallengeStatus.VERIFIED,
         expiresAt: new Date(Date.now() + 5 * 60 * 1000),
       });
 
-      jest.advanceTimersByTime(FALLBACK_TIMEOUT_MS);
+      jest.advanceTimersByTime(service.getFallbackTimeoutMs());
       await Promise.resolve();
 
       expect(sseServiceMock.sendEvent).not.toHaveBeenCalled();
