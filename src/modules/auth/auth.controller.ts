@@ -78,6 +78,17 @@ export class AuthController {
    * Yêu cầu gửi OTP: Điều phối thông minh giữa SSE trực tiếp (Returning User)
    * hoặc Zalo ZNS / Telegram Bot kèm 30s SSE Fallback (First Login / Unbound).
    */
+  @Get('request')
+  @ApiOperation({ summary: 'Thông tin hướng dẫn phương thức cho /auth/request' })
+  getRequestHelp() {
+    return {
+      statusCode: 405,
+      error: 'Method Not Allowed',
+      message:
+        'Endpoint /api/v1/auth/request yêu cầu phương thức POST kèm body JSON { phone: string }. Vui lòng truy cập giao diện web tại http://localhost:3000 hoặc dùng Swagger UI tại /api/docs',
+    };
+  }
+
   @Post('request')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Yêu cầu gửi mã xác thực OTP' })
@@ -171,9 +182,19 @@ export class AuthController {
   }
 
   /**
-   * [UAT-ACCEPTED-GAP #3]
-   * Xác thực mã OTP, phát hành Bearer JWT Token và Browser Credential (365 ngày).
+   * Endpoint GET /auth/verify: Hướng dẫn người dùng khi truy cập trực tiếp bằng trình duyệt
    */
+  @Get('verify')
+  @ApiOperation({ summary: 'Thông tin hướng dẫn phương thức cho /auth/verify' })
+  getVerifyHelp() {
+    return {
+      statusCode: 405,
+      error: 'Method Not Allowed',
+      message:
+        'Endpoint /api/v1/auth/verify yêu cầu phương thức POST kèm body JSON { challengeId: string, otp: string }. Vui lòng truy cập giao diện web tại http://localhost:3000 hoặc dùng Swagger UI tại /api/docs',
+    };
+  }
+
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Xác thực mã OTP và đăng nhập nhận JWT Token & Browser Credential' })
