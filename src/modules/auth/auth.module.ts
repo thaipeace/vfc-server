@@ -10,6 +10,7 @@ import { ChallengeService } from './services/challenge.service';
 import { BrowserCredentialService } from './services/browser-credential.service';
 import { SseConnectionService } from './services/sse-connection.service';
 import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestrator.service';
+import { OtpCleanupService } from './services/otp-cleanup.service';
 
 @Module({
   controllers: [AuthController],
@@ -24,6 +25,7 @@ import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestr
     BrowserCredentialService,
     SseConnectionService,
     OtpDeliveryOrchestratorService,
+    OtpCleanupService,
   ],
   exports: [
     JwtService,
@@ -36,6 +38,7 @@ import { OtpDeliveryOrchestratorService } from './services/otp-delivery-orchestr
     BrowserCredentialService,
     SseConnectionService,
     OtpDeliveryOrchestratorService,
+    OtpCleanupService,
   ],
 })
 export class AuthModule {}

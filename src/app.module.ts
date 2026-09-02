@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -10,6 +11,9 @@ import { AuthModule } from './modules/auth/auth.module';
   imports: [
     // Global environment config
     ConfigModule.forRoot({ isGlobal: true }),
+
+    // Global Task Scheduling (Cron Jobs)
+    ScheduleModule.forRoot(),
 
     // Structured logging with Pino
     LoggerModule.forRoot({
