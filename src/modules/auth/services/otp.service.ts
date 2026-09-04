@@ -1,13 +1,23 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { extractPhoneCore } from '../../../common/utils/phone';
 
 @Injectable()
 export class OtpService {
+  constructor(@Optional() private readonly configService?: ConfigService) {}
+
   /**
-   * Kiểm tra xem số điện thoại có thuộc diện dev test bypass OTP không (09883664xx)
+   * Kiểm tra xem số điện thoại có thuộc diện dev test bypass OTP không (09883664xx).
+   * Chỉ kích hoạt ở môi trường dev/non-production.
    */
   isDevBypassPhone(phone: string): boolean {
+    const env =
+      this.configService?.get<string>('NODE_ENV') || process.env.NODE_ENV;
+    if (env === 'production') {
+      return false;
+    }
+
     const core = extractPhoneCore(phone);
     if (!core) return false;
     // Khớp các SĐT dev dạng 09883664xx hoặc 9883664xx
