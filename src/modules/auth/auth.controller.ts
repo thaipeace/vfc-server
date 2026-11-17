@@ -76,7 +76,7 @@ export class AuthController {
   /**
    * [UAT-ACCEPTED-GAP #1]
    * Yêu cầu gửi OTP: Điều phối thông minh giữa SSE trực tiếp (Returning User)
-   * hoặc Zalo ZNS / Telegram Bot kèm 30s SSE Fallback (First Login / Unbound).
+   * hoặc Zalo ZNS / Telegram Bot kèm 3s SSE Fallback (First Login / Unbound).
    */
   @Get('request')
   @ApiOperation({ summary: 'Thông tin hướng dẫn phương thức cho /auth/request' })
